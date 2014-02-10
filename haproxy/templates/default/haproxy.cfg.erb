@@ -36,7 +36,7 @@ defaults
   <% end -%>
         
 # Set up application listeners here.
-<% if node[:haproxy][:rails_backends].blank? && node[:haproxy][:php_backends].blank? && node[:haproxy][:nodejs_backends].blank? && node[:haproxy][:static_backends].blank? -%>
+<% if node[:haproxy][:rails_backends].blank? && node[:haproxy][:php_backends].blank? && node[:haproxy][:nodejs_backends].blank? && node[:haproxy][:static_backends].blank? && node[:opsworks][:layers][:db-master][:instances].empty -%>
 listen application 0.0.0.0:80
   # configure a fake backend as long as there are no real ones
   # this way HAProxy will not fail on a config check
@@ -131,6 +131,17 @@ backend static_servers_ssl
   server <%= backend['name'] %> <%= backend['ip'] %>:443 weight <%= backend['backends'] || 10 %> maxconn <%= backend['backends'] * node[:haproxy][:maxcon_factor_static_ssl] %> check inter <%= node[:haproxy][:check_interval] %> 
   <% end -%>
 <% end -%>
+
+<% if !node[:opsworks][:layers][:db-master][:instances].empty? -%>  
+backend mysql_servers
+  balance <%= node[:haproxy][:balance] %>
+  option redispatch
+  option forwardfor
+  option httpchk GET <%= node[:haproxy][:health_check_url] %> # Nginx doesn't understand OPTIONS
+  <% node[:opsworks][:layers][:db-master][:instances].each do |backend| -%>
+  server <%= backend['name'] %> <%= backend['ip'] %>:80 weight <%= backend['backends'] || 10 %> maxconn <%= backend['backends'] * node[:haproxy][:maxcon_factor_static] %> check inter <%= node[:haproxy][:check_interval] %> 
+  <% end -%>
+<% end -%>
   
 frontend http-in
   bind :80
@@ -174,7 +185,7 @@ frontend http-in
       <% end -%>
     <% end -%>
   <% end -%>
-  
+    
   # choose backend
   <% unless node[:haproxy][:static_applications].empty? || node[:haproxy][:static_backends].empty? -%>
     <% node[:haproxy][:static_applications].each do |app_name, app_config| -%>
@@ -223,7 +234,7 @@ frontend http-in
       <% end -%>
     <% end -%>
   <% end -%>
-    
+        
   <% if !node[:haproxy][:rails_backends].empty? -%>
   default_backend rails_app_servers
   <% elsif !node[:haproxy][:php_backends].empty? -%>
@@ -232,6 +243,8 @@ frontend http-in
   default_backend nodejs_app_servers
   <% elsif !node[:haproxy][:static_backends].empty? -%>
   default_backend static_servers
+  <% elsif !node[:haproxy][:photoapp_backends].empty? -%>
+  default_backend photoapp_servers
   <% end -%>
   
 frontend https-in
@@ -266,6 +279,13 @@ frontend https-in
     <% end -%>
   <% end -%>
 
+  # all domains of photoapp applications
+  <% node[:haproxy][:photoapp_applications].each do |app_name, app_config| -%>
+    <% app_config['domains'].each do |domain| -%>
+  acl photoapp_applications_ssl hdr_end(host) -i <%= domain %>
+    <% end -%>
+  <% end -%>
+
   <% unless node[:haproxy][:rails_applications].empty? || node[:haproxy][:rails_backends].empty? -%>
   use_backend rails_app_servers_ssl if rails_applications_ssl
   <% end -%>
@@ -278,6 +298,10 @@ frontend https-in
   <% unless node[:haproxy][:static_applications].empty? || node[:haproxy][:static_backends].empty? -%>
   use_backend static_servers_ssl if static_applications_ssl
   <% end -%>
+  <% unless node[:haproxy][:photoapp_applications].empty? || node[:haproxy][:photoapp_backends].empty? -%>
+    use_backend photoapp_servers_ssl if photoapp_applications_ssl
+  <% end -%>
+  
   
   <% if !node[:haproxy][:rails_backends].empty? -%>
   default_backend rails_app_servers_ssl
@@ -287,6 +311,8 @@ frontend https-in
   default_backend nodejs_app_servers_ssl
   <% elsif !node[:haproxy][:static_backends].empty? -%>
   default_backend static_servers_ssl
+  <% elsif !node[:opsworks][:layers][:db-master][:instances].empty? -%>
+  default_backend mysql_servers
   <% end -%>
 
 <% end -%>  
