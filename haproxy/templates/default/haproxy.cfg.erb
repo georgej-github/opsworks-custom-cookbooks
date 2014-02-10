@@ -36,7 +36,7 @@ defaults
   <% end -%>
         
 # Set up application listeners here.
-<% if node[:haproxy][:rails_backends].blank? && node[:haproxy][:php_backends].blank? && node[:haproxy][:nodejs_backends].blank? && node[:haproxy][:static_backends].blank? && node[:opsworks][:layers][:db-master][:instances].empty -%>
+<% if node[:haproxy][:rails_backends].blank? && node[:haproxy][:php_backends].blank? && node[:haproxy][:nodejs_backends].blank? && node[:haproxy][:static_backends].blank? && node[:opsworks][:layers][:db-master][:instances].blank? -%>
 listen application 0.0.0.0:80
   # configure a fake backend as long as there are no real ones
   # this way HAProxy will not fail on a config check
@@ -243,8 +243,6 @@ frontend http-in
   default_backend nodejs_app_servers
   <% elsif !node[:haproxy][:static_backends].empty? -%>
   default_backend static_servers
-  <% elsif !node[:haproxy][:photoapp_backends].empty? -%>
-  default_backend photoapp_servers
   <% end -%>
   
 frontend https-in
